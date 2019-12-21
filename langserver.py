@@ -8,6 +8,9 @@ from beancount import loader
 from beancount.core.data import Open
 
 import re
+from fuzzywuzzy import fuzz
+
+FUZZY_CUTOFF = 40
 
 class State:
     entries = None
@@ -24,7 +27,9 @@ class State:
         self._updateAccounts()
 
     def _extractAccount(self, line, offset):
-        """ Attempts to extract something that looks like an account (prefix) from line at offset """
+        """ Attempts to extract something that looks like an account (prefix) from line at offset.
+            It returns the offset of the match from the beginning of line and the matched text.
+        """
         r = re.compile(r'\s')
         startoffsets = []
         for m in r.finditer(line):
@@ -39,12 +44,20 @@ class State:
         return index, match
 
     def getAccounts(self, row, character):
-        """ Returns a list of accounts that sort of match what's in the loaded document at the given position """
+        """ Returns a list of accounts that sort of match what's in the loaded document at the given position,
+            in addition to the beginning and end of the matched text
+        """
         line = self.rawDoc[row]
         index, pattern = self._extractAccount(line, character)
-        # Return all accounts that somehow match the pattern
-        matches = [a for a in self.accounts if pattern in a]
-        return index, index + len(pattern), matches
+        # Compute a list of matches, sorted by fuzzy similarity. Cut off matches with less than FUZZY_CUTOFF %
+        # similarity.
+        matches = []
+        for a in self.accounts:
+            matches.append((fuzz.ratio(a.lower(), pattern.lower()), a))
+
+        matches = [m for m in sorted(matches, reverse=True, key=lambda x: x[0]) if m[0] > FUZZY_CUTOFF]
+        server.show_message("match candidates: {}".format(matches))
+        return index, index + len(pattern), [m[1] for m in matches]
 
     def _updateAccounts(self):
         accs = []
