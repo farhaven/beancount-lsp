@@ -8,9 +8,6 @@ from beancount import loader
 from beancount.core.data import Open
 
 import re
-from fuzzywuzzy import fuzz
-
-FUZZY_CUTOFF = 40
 
 class State:
     entries = None
@@ -45,19 +42,23 @@ class State:
 
     def getAccounts(self, row, character):
         """ Returns a list of accounts that sort of match what's in the loaded document at the given position,
-            in addition to the beginning and end of the matched text
+            in addition to the beginning and end of the matched text.
+
+            This uses the fuzzy matching code from https://blog.amjith.com/fuzzyfinder-in-10-lines-of-python
         """
         line = self.rawDoc[row]
         index, pattern = self._extractAccount(line, character)
-        # Compute a list of matches, sorted by fuzzy similarity. Cut off matches with less than FUZZY_CUTOFF %
-        # similarity.
+        pattern_re = re.compile(".*?".join(pattern.lower()))
         matches = []
         for a in self.accounts:
-            matches.append((fuzz.ratio(a.lower(), pattern.lower()), a))
+        	match = pattern_re.search(a.lower())
+        	if match:
+        		matches.append((len(match.group()), match.start(), a))
 
-        matches = [m for m in sorted(matches, reverse=True, key=lambda x: x[0]) if m[0] > FUZZY_CUTOFF]
+        matches = list(sorted(matches))
+
         server.show_message("match candidates: {}".format(matches))
-        return index, index + len(pattern), [m[1] for m in matches]
+        return index, index + len(pattern), [m[-1] for m in matches]
 
     def _updateAccounts(self):
         accs = []
